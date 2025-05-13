@@ -1,85 +1,81 @@
 const recordBtn = document.getElementById('recordBtn');
+const btnText = document.getElementById('btnText');
+const icon = recordBtn.querySelector('.icon');
 const transcriptionBlock = document.getElementById('transcriptionBlock');
 const transcription = document.getElementById('transcription');
-const btnText = document.getElementById('btnText');
-const loader = document.getElementById('loader');
-const copyIcon = document.getElementById('copyIcon');
+const copyBtn = document.getElementById('copyBtn');
 
 let mediaRecorder;
 let audioChunks = [];
 let isRecording = false;
 
-// Функция записи
+// === ФУНКЦИЯ: начать запись ===
 async function startRecording() {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   mediaRecorder = new MediaRecorder(stream);
+  audioChunks = [];
 
   mediaRecorder.ondataavailable = event => {
     audioChunks.push(event.data);
   };
 
   mediaRecorder.onstop = async () => {
-    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-    const audioFile = new File([audioBlob], 'recording.wav', { type: 'audio/wav' });
+    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+    const audioFile = new File([audioBlob], 'audio.webm', { type: 'audio/webm' });
 
-    // Отправка на сервер для транскрипции
-    await sendToAssemblyAI(audioFile);
-    audioChunks = [];
+    // Обновим кнопку
+    btnText.innerText = 'Распознаем';
+    recordBtn.classList.remove('recording');
+    recordBtn.classList.add('pulsing');
+    recordBtn.disabled = true;
+
+    await sendToServer(audioFile);
+
+    recordBtn.disabled = false;
+    btnText.innerText = 'Начать запись';
+    recordBtn.classList.remove('pulsing');
   };
 
   mediaRecorder.start();
 }
 
-// Функция отправки на сервер
-async function sendToAssemblyAI(audioFile) {
-  // Показываем загрузчик
-  loader.classList.remove('hidden');
-  transcriptionBlock.classList.add("hidden");
-  btnText.innerText = 'Распознаем...';
-
+// === ФУНКЦИЯ: отправка файла на /api/transcribe ===
+async function sendToServer(audioFile) {
   const formData = new FormData();
   formData.append("audio", audioFile);
 
-  const response = await fetch("/api/transcribe", {
+  const res = await fetch("/api/transcribe", {
     method: "POST",
     body: formData
   });
 
-  const data = await response.json();
+  const data = await res.json();
   transcription.innerText = data.text || 'Ошибка';
   transcriptionBlock.classList.remove("hidden");
-
-  // Обновляем кнопку
-  btnText.innerText = 'Начать запись';
-  recordBtn.classList.remove('recording');
-  recordBtn.classList.add('none');
-  loader.classList.add('hidden');
 }
 
-// Обработчик кнопки записи
-recordBtn.addEventListener('click', () => {
-  if (isRecording) {
-    // Останавливаем запись
-    mediaRecorder.stop();
-    isRecording = false;
-
-    // Обновляем кнопку
-    btnText.innerText = 'Распознаем';
-    recordBtn.classList.remove('recording');
-    recordBtn.classList.add('pulsing');
-  } else {
-    // Начинаем запись
+// === Кнопка записи ===
+recordBtn.addEventListener('click', async () => {
+  if (!isRecording) {
     isRecording = true;
-    startRecording();
     btnText.innerText = 'Остановить';
     recordBtn.classList.add('recording');
-    recordBtn.classList.remove('none');
+    startRecording();
+  } else {
+    isRecording = false;
+    mediaRecorder.stop();
   }
 });
 
-// Функция копирования текста
-copyIcon.addEventListener('click', () => {
+// === Кнопка копирования ===
+copyBtn.addEventListener('click', () => {
   navigator.clipboard.writeText(transcription.innerText)
-    .then(() => alert('Текст скопирован в буфер обмена!'))
-    .catch(err => alert('Ошибка копирования текста: ' + err));
+    .then(() => {
+      copyBtn.innerHTML = '<i data-lucide="check"></i>';
+      lucide.createIcons();
+      setTimeout(() => {
+        copyBtn.innerHTML = '<i data-lucide="copy"></i>';
+        lucide.createIcons();
+      }, 1000);
+    });
 });
