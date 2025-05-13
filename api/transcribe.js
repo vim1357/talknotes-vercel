@@ -1,6 +1,6 @@
-import multer from 'multer';
-import nextConnect from 'next-connect';
-import fetch from 'node-fetch';
+const nextConnect = require('next-connect');
+const multer = require('multer');
+const fetch = require('node-fetch');
 
 const upload = multer();
 const API_KEY = process.env.ASSEMBLYAI_API_KEY;
@@ -22,7 +22,8 @@ handler.post(async (req, res) => {
       body: buffer,
     });
 
-    const { upload_url } = await uploadRes.json();
+    const uploadData = await uploadRes.json();
+    const audioUrl = uploadData.upload_url;
 
     // Start transcription
     const transcriptRes = await fetch('https://api.assemblyai.com/v2/transcript', {
@@ -32,12 +33,13 @@ handler.post(async (req, res) => {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        audio_url: upload_url,
+        audio_url: audioUrl,
         language_code: 'ru',
       }),
     });
 
-    const { id } = await transcriptRes.json();
+    const transcriptData = await transcriptRes.json();
+    const transcriptId = transcriptData.id;
 
     // Polling
     let completed = false;
@@ -46,17 +48,17 @@ handler.post(async (req, res) => {
     while (!completed) {
       await new Promise(r => setTimeout(r, 3000));
 
-      const pollRes = await fetch(`https://api.assemblyai.com/v2/transcript/${id}`, {
+      const pollingRes = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
         headers: {
           authorization: API_KEY,
-        },
+        }
       });
 
-      const pollData = await pollRes.json();
-      if (pollData.status === 'completed') {
+      const pollingData = await pollingRes.json();
+      if (pollingData.status === 'completed') {
         completed = true;
-        text = pollData.text;
-      } else if (pollData.status === 'error') {
+        text = pollingData.text;
+      } else if (pollingData.status === 'error') {
         completed = true;
         text = 'Ошибка при транскрибации';
       }
@@ -64,15 +66,15 @@ handler.post(async (req, res) => {
 
     res.status(200).json({ text });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Ошибка на сервере' });
+    console.error('[Transcription error]', err);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
-export const config = {
+module.exports = handler;
+
+module.exports.config = {
   api: {
     bodyParser: false,
   },
 };
-
-export default handler;
